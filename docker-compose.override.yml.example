@@ -24,8 +24,10 @@ services:
     #   - SLACK_APP_TOKEN=xapp-override-here
     #   - ANTHROPIC_API_KEY=sk-ant-override-here
     #   - ANTHROPIC_BASE_URL=https://your-custom-endpoint.com
-    #   - LOG_LEVEL=DEBUG
-    #   - CLAUDE_MODEL=haiku  # or sonnet, opus
+    #   - CLAUDE_MODEL=sonnet  # or haiku, opus
+    #   - CLAUDE_PERMISSION_MODE=acceptEdits  # Auto-accept edits (careful!)
+    #   - CLAUDE_ALLOWED_TOOLS=Read,Write,Bash  # Enable file and bash tools
+    #   - LOG_LEVEL=DEBUG  # For detailed troubleshooting only (very verbose)
 
     # Override resource limits for local development (e.g., more generous limits)
     # deploy:

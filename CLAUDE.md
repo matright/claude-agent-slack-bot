@@ -92,11 +92,32 @@ The application is organized in the `app/` package:
 ## Claude Agent SDK Integration
 
 ### Configuration
-The bot uses `ClaudeAgentOptions` with the following settings (app/app.py:~31-36):
-- **Model**: `haiku` (fast, cost-effective Claude model)
-- **Permission Mode**: `default` (standard execution mode)
-- **Allowed Tools**: Empty list `[]` (no tools enabled, prevents file/system access)
-- **Working Directory**: Set via `CLAUDE_WORKING_DIR` environment variable
+The bot uses `ClaudeAgentOptions` with configurable settings via environment variables (app/app.py:~39-69):
+
+**CLAUDE_MODEL** (default: "haiku"):
+- `haiku`: Fast, cost-effective Claude model
+- `sonnet`: Balanced performance and capability
+- `opus`: Most capable, higher cost
+- Configurable via environment variable
+
+**CLAUDE_PERMISSION_MODE** (default: "default"):
+- `default`: Standard permission behavior (prompts for confirmations)
+- `acceptEdits`: Auto-accept file edits without prompting (⚠️ use with caution)
+- `plan`: Planning mode - no execution, only planning
+- `bypassPermissions`: Bypass all permission checks (⚠️ dangerous!)
+- Configurable via environment variable
+
+**CLAUDE_ALLOWED_TOOLS** (default: empty list):
+- Comma-separated list of enabled tools
+- Available: Read, Write, Bash, Glob, Grep, Edit, etc.
+- Empty by default for security (prevents file/system access)
+- Configurable via environment variable
+- Example: `CLAUDE_ALLOWED_TOOLS=Read,Write,Bash`
+
+**CLAUDE_WORKING_DIR**:
+- Working directory for file operations (if tools are enabled)
+- Set to `/app/claude-cwd` in Docker, mounted as volume
+- Configurable via environment variable
 
 ### Conversation Management
 - Each conversation is identified by a unique key: `{channel_id}:{thread_ts}`
@@ -111,11 +132,23 @@ The bot filters Claude's responses to provide a clean user experience:
 - **Excluded**: `ThinkingBlock` messages (internal reasoning)
 - All included text blocks are concatenated with newlines and sent as a single Slack message
 
-### Adding Tools (Future Enhancement)
-To enable Claude to use tools (Read, Write, Bash, etc.), modify the `allowed_tools` parameter in app/app.py:~34:
-```python
-allowed_tools=["Read", "Write", "Bash"]  # Example: enable file and bash operations
+### Adding Tools
+To enable Claude to use tools, set the `CLAUDE_ALLOWED_TOOLS` environment variable:
+
+```bash
+# Read-only tools (safe)
+CLAUDE_ALLOWED_TOOLS=Read,Grep,Glob
+
+# Read and write (moderate risk)
+CLAUDE_ALLOWED_TOOLS=Read,Write,Edit
+
+# Full access (use with caution)
+CLAUDE_ALLOWED_TOOLS=Read,Write,Bash
 ```
+
+For programmatic configuration, the parsing logic is in app/app.py:~43-45 where the comma-separated string is converted to a list.
+
+**Security Note**: Enabling tools gives Claude access to the file system and potentially shell execution. Always use in controlled environments with proper isolation.
 
 ## Key Technical Notes
 

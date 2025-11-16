@@ -53,6 +53,35 @@ CLAUDE_WORKING_DIR=/path/to/your/workspace
    - Set this to a directory path where Claude can access context (optional)
    - Example: `/Users/yourusername/workspace` or your project directory
 
+6. **CLAUDE_MODEL** (Optional):
+   - Default: `haiku`
+   - Choose the Claude model based on your needs:
+     - `haiku`: Fast, cost-effective, suitable for most tasks
+     - `sonnet`: Balanced performance, better for complex reasoning
+     - `opus`: Most capable, highest cost, best for difficult tasks
+
+7. **CLAUDE_PERMISSION_MODE** (Optional):
+   - Default: `default`
+   - Controls how Claude handles permissions:
+     - `default`: Standard permission behavior (prompts for confirmations)
+     - `acceptEdits`: Auto-accept file edits without prompting
+     - `plan`: Planning mode - no execution, only planning
+     - `bypassPermissions`: Bypass all permission checks (⚠️ use with caution!)
+   - **Security Warning**: `acceptEdits` and `bypassPermissions` can be dangerous
+
+8. **CLAUDE_ALLOWED_TOOLS** (Optional):
+   - Default: empty (no tools enabled)
+   - Comma-separated list of tools to enable
+   - Available tools: `Read`, `Write`, `Bash`, `Glob`, `Grep`, `Edit`, etc.
+   - Example: `CLAUDE_ALLOWED_TOOLS=Read,Write,Bash`
+   - **Security Warning**: Enabling tools gives Claude file system and command execution access
+
+9. **LOG_LEVEL** (Optional):
+   - Default: `INFO`
+   - Controls application logging verbosity
+   - Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+   - **Note**: Use `DEBUG` for detailed troubleshooting only - it is very verbose
+
 ### Setup Your Local Project
 
 ```bash
@@ -305,6 +334,108 @@ deploy:
   resources:
     limits:
       memory: 2G
+```
+
+## Configuring Claude Agent SDK
+
+The bot's Claude Agent SDK integration can be customized through environment variables. All settings have sensible defaults and are optional.
+
+### Model Selection
+
+Choose the Claude model based on your needs:
+
+```bash
+# Fast and cost-effective (default)
+CLAUDE_MODEL=haiku
+
+# Balanced performance
+CLAUDE_MODEL=sonnet
+
+# Most capable, highest cost
+CLAUDE_MODEL=opus
+```
+
+**Trade-offs:**
+- **haiku**: ~10x cheaper than opus, suitable for most Slack bot interactions
+- **sonnet**: Better reasoning, good for complex questions
+- **opus**: Best for difficult problems requiring deep analysis
+
+### Permission Modes
+
+**`default`** (recommended for production):
+- Standard permission behavior
+- Prompts for confirmations when needed
+- Safest option for general use
+
+**`acceptEdits`**:
+- Auto-accepts file edits without prompting
+- Useful for automated workflows where edits are expected
+- ⚠️ Use only in controlled environments with proper isolation
+
+**`plan`**:
+- Planning mode only - no execution
+- Claude will analyze and plan actions but not execute them
+- Excellent for testing and reviewing proposed changes before execution
+
+**`bypassPermissions`**:
+- Bypasses all permission checks
+- ⚠️ **DANGEROUS** - use with extreme caution
+- Only for fully trusted, isolated environments
+- Never use in production or with untrusted inputs
+
+### Enabling Tools
+
+By default, Claude has **no file system or command execution access** for security. Enable tools based on your needs:
+
+```bash
+# No tools (default - safest)
+CLAUDE_ALLOWED_TOOLS=
+
+# Read-only access (safest when tools are needed)
+CLAUDE_ALLOWED_TOOLS=Read,Grep,Glob
+
+# Read and write (moderate risk)
+CLAUDE_ALLOWED_TOOLS=Read,Write,Edit
+
+# Full access including shell (highest risk)
+CLAUDE_ALLOWED_TOOLS=Read,Write,Edit,Bash
+```
+
+**Available Tools:**
+- `Read`: Read file contents
+- `Write`: Create new files
+- `Edit`: Modify existing files
+- `Bash`: Execute shell commands
+- `Grep`: Search file contents
+- `Glob`: Find files by pattern
+
+**Security Best Practices:**
+1. Start with no tools or read-only tools (`Read`, `Grep`, `Glob`)
+2. Never use `bypassPermissions` in production
+3. Use `acceptEdits` only in sandboxed/isolated environments
+4. Enable `Bash` tool only when absolutely necessary
+5. Ensure `CLAUDE_WORKING_DIR` is properly isolated from sensitive files
+6. Remember: Claude will have access to environment variables and secrets if tools are enabled
+7. Use volume mounts with appropriate permissions (read-only when possible)
+8. Monitor and log all tool usage in production
+
+**Example Configurations:**
+
+```bash
+# Development: Full access for testing
+CLAUDE_MODEL=sonnet
+CLAUDE_PERMISSION_MODE=acceptEdits
+CLAUDE_ALLOWED_TOOLS=Read,Write,Bash
+
+# Staging: Moderate access
+CLAUDE_MODEL=haiku
+CLAUDE_PERMISSION_MODE=default
+CLAUDE_ALLOWED_TOOLS=Read,Write
+
+# Production: Minimal access (default)
+CLAUDE_MODEL=haiku
+CLAUDE_PERMISSION_MODE=default
+CLAUDE_ALLOWED_TOOLS=
 ```
 
 ## Project Structure

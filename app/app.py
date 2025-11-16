@@ -9,9 +9,12 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock, ThinkingBlock
 
-logging.basicConfig(level=logging.DEBUG)
-
 load_dotenv()
+
+# Configure logging level from environment variable (default: INFO)
+# Use DEBUG for detailed troubleshooting only
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
 
 # Initialization
 app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
@@ -36,10 +39,35 @@ async def get_or_create_claude_client(conversation_key: str) -> ClaudeSDKClient:
         ClaudeSDKClient instance for this conversation
     """
     if conversation_key not in claude_clients:
+        # Get Claude configuration from environment variables with defaults
+        model = os.environ.get("CLAUDE_MODEL", "haiku")
+        permission_mode = os.environ.get("CLAUDE_PERMISSION_MODE", "default")
+
+        # Parse allowed_tools from comma-separated string to list
+        allowed_tools_str = os.environ.get("CLAUDE_ALLOWED_TOOLS", "")
+        allowed_tools = [tool.strip() for tool in allowed_tools_str.split(",") if tool.strip()] if allowed_tools_str else []
+
+        # Validate permission mode
+        VALID_PERMISSION_MODES = ["default", "acceptEdits", "plan", "bypassPermissions"]
+        if permission_mode not in VALID_PERMISSION_MODES:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Unknown permission_mode '{permission_mode}', using 'default'. Valid options: {VALID_PERMISSION_MODES}")
+            permission_mode = "default"
+
+        # Warn about dangerous permission modes
+        if permission_mode in ["acceptEdits", "bypassPermissions"]:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"⚠️  Using permission_mode '{permission_mode}' - this can be dangerous! Ensure you're in a controlled environment.")
+
+        # Log configuration for debugging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Claude SDK configuration: model={model}, permission_mode={permission_mode}, "
+                   f"allowed_tools={allowed_tools}, cwd={os.environ.get('CLAUDE_WORKING_DIR')}")
+
         options = ClaudeAgentOptions(
-            model="haiku",
-            permission_mode="default",
-            allowed_tools=[],  # Empty for now, can be configured later
+            model=model,
+            permission_mode=permission_mode,
+            allowed_tools=allowed_tools,
             cwd=os.environ.get("CLAUDE_WORKING_DIR")
         )
         # Creating client for persistent conversation history
@@ -79,7 +107,7 @@ async def handle_app_mention(event, say, logger):
 
         # Send acknowledgment
         await say(
-            text=f"Processing your request <@{user_id}>...",
+            text=f":eyes: an agent is looking into your request <@{user_id}>, please hold on...",
             thread_ts=thread_ts
         )
 
