@@ -16,6 +16,7 @@ env*/
 venv/
 .venv*
 .env*
+!.env.example
 
 # codecov / coverage
 .coverage
@@ -38,3 +39,16 @@ logs/
 .pytype/
 .idea/
 .slack/
+
+# Docker
+docker-compose.override.yml
+
+# Claude Agent SDK
+# Working directory for Claude operations (mounted as volume)
+claude-cwd/
+
+# Claude Code configuration
+# Keep project-level config (tracked in git)
+# Ignore user-specific settings and sensitive data
+.claude/*
+!.claude/config.json

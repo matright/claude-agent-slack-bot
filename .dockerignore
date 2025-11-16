@@ -1,0 +1,79 @@
+# Dockerignore file for Claude Agent Slack Bot
+# Excludes unnecessary files from Docker build context to reduce image size
+# and prevent sensitive files from being copied into the image
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Git repository
+.git/
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation (not needed at runtime)
+README.md
+CLAUDE.md
+LICENSE
+*.md
+
+# Test files
+tests/
+test_*.py
+*_test.py
+pytest.ini
+.pytest_cache/
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# Docker files (don't copy Docker files into the image)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Claude working directory (will be mounted as volume)
+claude-cwd/
+
+# Coverage and testing
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

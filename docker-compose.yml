@@ -1,0 +1,91 @@
+services:
+  slack-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claude-agent-slack-bot:latest
+    container_name: claude-agent-slack-bot
+
+    # Environment variables using shell variable substitution
+    # Docker Compose automatically loads variables from .env file in project root
+    # OR you can export variables to your shell before running docker-compose
+    # For production, use orchestration platform's secret management instead
+    environment:
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      - CLAUDE_WORKING_DIR=${CLAUDE_WORKING_DIR:-/app/claude-cwd}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-haiku}
+      - CLAUDE_PERMISSION_MODE=${CLAUDE_PERMISSION_MODE:-default}
+      - CLAUDE_ALLOWED_TOOLS=${CLAUDE_ALLOWED_TOOLS:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    # Volume mounts for persistence and configuration
+    volumes:
+      # Claude working directory - persistent storage for Claude Agent SDK operations
+      # This directory will contain files created/modified by Claude during conversations
+      - ./claude-cwd:/app/claude-cwd
+
+      # Project-level Claude configuration (optional)
+      # Mount project's .claude folder if it exists for shared team settings
+      # Read-only to prevent accidental modifications from within container
+      - ./.claude:/app/.claude:ro
+
+      # User-level Claude configuration (optional, commented by default)
+      # Uncomment to use your personal Claude Code settings in the container
+      # Useful for development to preserve your personal preferences
+      # NEVER commit your personal ~/.claude folder to git
+      # - ~/.claude:/home/appuser/.claude:ro
+
+    # Restart policy - restart on failure but not on manual stop
+    restart: on-failure
+
+    # Resource limits based on Claude Agent SDK recommendations
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Health check configuration
+    # Queries the internal health check endpoint every 30 seconds
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8080/health\")' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Network mode - bridge (default) for outbound connections only
+    # Socket Mode eliminates need for inbound ports
+    network_mode: bridge
+
+# Optional: Redis service for future conversation state persistence
+# Uncomment when implementing Redis-based state management
+#
+# redis:
+#   image: redis:7-alpine
+#   container_name: claude-bot-redis
+#   restart: on-failure
+#   volumes:
+#     - redis-data:/data
+#   deploy:
+#     resources:
+#       limits:
+#         cpus: '0.5'
+#         memory: 256M
+#
+# volumes:
+#   redis-data:
+#     driver: local

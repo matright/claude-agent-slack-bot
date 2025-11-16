@@ -1,0 +1,60 @@
+# docker-compose.override.yml.example
+#
+# This is an example override file for local development customization.
+# Copy this file to docker-compose.override.yml to use it:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# Docker Compose automatically merges docker-compose.override.yml with docker-compose.yml
+# Use this for local development settings that shouldn't be committed to git
+
+services:
+  slack-bot:
+    # Enable user-level Claude configuration mount
+    # Uncomment this to use your personal ~/.claude folder in the container
+    # This preserves your personal Claude Code preferences during development
+    volumes:
+      - ~/.claude:/home/appuser/.claude:ro
+
+    # Override environment variables for local development
+    # Option 1: Docker Compose automatically loads .env file from project root
+    # Option 2: Explicitly set environment variables here
+    # Uncomment and customize as needed
+    # environment:
+    #   - SLACK_BOT_TOKEN=xoxb-override-here
+    #   - SLACK_APP_TOKEN=xapp-override-here
+    #   - ANTHROPIC_API_KEY=sk-ant-override-here
+    #   - ANTHROPIC_BASE_URL=https://your-custom-endpoint.com
+    #   - CLAUDE_MODEL=sonnet  # or haiku, opus
+    #   - CLAUDE_PERMISSION_MODE=acceptEdits  # Auto-accept edits (careful!)
+    #   - CLAUDE_ALLOWED_TOOLS=Read,Write,Bash  # Enable file and bash tools
+    #   - LOG_LEVEL=DEBUG  # For detailed troubleshooting only (very verbose)
+
+    # Override resource limits for local development (e.g., more generous limits)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2.0'
+    #       memory: 2G
+
+    # Enable port mapping for debugging health check endpoint
+    # Uncomment to access health check at http://localhost:8080/health
+    # ports:
+    #   - "8080:8080"
+
+    # Mount additional directories for development
+    # Uncomment to enable live code reloading (requires app modifications to watch for changes)
+    # volumes:
+    #   - ./app:/app/app:ro
+
+# Add additional services for local development
+# Example: pgAdmin, Redis Commander, etc.
+#
+# redis-commander:
+#   image: rediscommander/redis-commander:latest
+#   container_name: claude-bot-redis-commander
+#   environment:
+#     - REDIS_HOSTS=redis:redis:6379
+#   ports:
+#     - "8081:8081"
+#   depends_on:
+#     - redis

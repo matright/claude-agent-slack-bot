@@ -1,0 +1,17 @@
+{
+  "description": "Project-level Claude Code configuration for Claude Agent Slack Bot",
+  "version": "1.0.0",
+  "settings": {
+    "defaultModel": "haiku",
+    "permissionMode": "default",
+    "allowedTools": [],
+    "maxTurns": 50
+  },
+  "notes": [
+    "This configuration is shared across all developers working on this project",
+    "Personal Claude settings should be in ~/.claude/ (not committed to git)",
+    "The allowedTools array is empty by default for security",
+    "To enable file operations, add: 'Read', 'Write', 'Bash', etc. to allowedTools",
+    "maxTurns prevents infinite loops in Claude Agent SDK conversations"
+  ]
+}
