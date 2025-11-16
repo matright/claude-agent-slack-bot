@@ -1,6 +1,8 @@
 import os
 import logging
+import signal
 from dotenv import load_dotenv
+from aiohttp import web
 
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
@@ -15,7 +17,13 @@ load_dotenv()
 app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 # Store ClaudeSDKClient instances per conversation (thread or channel)
+# TODO: For production, consider using Redis or another persistent store
+# to maintain conversation state across container restarts
+# Example: redis_client = redis.asyncio.Redis(host='redis', port=6379, decode_responses=True)
 claude_clients = {}
+
+# Shutdown event for graceful cleanup
+shutdown_event = None
 
 
 async def get_or_create_claude_client(conversation_key: str) -> ClaudeSDKClient:
@@ -108,8 +116,105 @@ async def handle_app_mention(event, say, logger):
         )
 
 
+async def cleanup_claude_clients():
+    """Cleanup all Claude client connections gracefully.
+
+    This function is called during shutdown to properly close all
+    ClaudeSDKClient async context managers.
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Cleaning up Claude client connections...")
+
+    for conversation_key, client in claude_clients.items():
+        try:
+            await client.__aexit__(None, None, None)
+            logger.info(f"Closed Claude client for conversation: {conversation_key}")
+        except Exception as e:
+            logger.error(f"Error closing client for {conversation_key}: {e}", exc_info=True)
+
+    claude_clients.clear()
+    logger.info("All Claude clients cleaned up")
+
+
+async def health_check_handler(request):
+    """Health check endpoint for container monitoring.
+
+    Returns:
+        JSON response with status and conversation count
+    """
+    return web.json_response({
+        "status": "healthy",
+        "conversations": len(claude_clients)
+    })
+
+
+async def start_health_check_server():
+    """Start the health check HTTP server.
+
+    This server runs on port 8080 and provides a /health endpoint
+    for Docker health checks and monitoring.
+    """
+    app_web = web.Application()
+    app_web.router.add_get('/health', health_check_handler)
+
+    runner = web.AppRunner(app_web)
+    await runner.setup()
+
+    site = web.TCPSite(runner, 'localhost', 8080)
+    await site.start()
+
+    logger = logging.getLogger(__name__)
+    logger.info("Health check server started on http://localhost:8080/health")
+
+    # Keep the server running until shutdown
+    global shutdown_event
+    if shutdown_event:
+        await shutdown_event.wait()
+        await runner.cleanup()
+
+
 async def main():
-    await AsyncSocketModeHandler(app, os.environ.get("SLACK_APP_TOKEN")).start_async()
+    """Main entry point for the application.
+
+    Starts both the Slack bot (Socket Mode) and health check server concurrently.
+    Handles graceful shutdown on SIGINT and SIGTERM signals.
+    """
+    import asyncio
+
+    logger = logging.getLogger(__name__)
+    logger.info("Starting Claude Agent Slack Bot...")
+
+    # Set up shutdown event
+    global shutdown_event
+    shutdown_event = asyncio.Event()
+
+    # Signal handler for graceful shutdown
+    def signal_handler(signum, frame):
+        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        shutdown_event.set()
+
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    try:
+        # Create tasks for both services
+        slack_handler = AsyncSocketModeHandler(app, os.environ.get("SLACK_APP_TOKEN"))
+
+        # Run both the Slack bot and health check server concurrently
+        await asyncio.gather(
+            slack_handler.start_async(),
+            start_health_check_server()
+        )
+
+    except Exception as e:
+        logger.error(f"Error in main: {e}", exc_info=True)
+    finally:
+        # Cleanup on shutdown
+        logger.info("Shutting down...")
+        await cleanup_claude_clients()
+        logger.info("Shutdown complete")
+
 
 # Start Bolt app
 if __name__ == "__main__":

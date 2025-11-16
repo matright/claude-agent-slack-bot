@@ -14,33 +14,72 @@ Required environment variables (never commit these):
 - `ANTHROPIC_API_KEY`: Anthropic API key for Claude Agent SDK (get from https://console.anthropic.com)
 - `CLAUDE_WORKING_DIR`: Working directory path for Claude Agent SDK operations (e.g., `/path/to/workspace`)
 
-Setup commands:
+### Local Development Setup
 ```bash
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Create .env file from template
+cp .env.example .env
+# Edit .env with your credentials
+
+# Run the app
+python -m app
 ```
+
+### Docker Deployment Setup
+```bash
+# Option 1: Using .env file (Docker Compose auto-loads it)
+cp .env.example .env
+# Edit .env with your credentials
+docker-compose up --build
+
+# Option 2: Using shell exports
+export SLACK_BOT_TOKEN=xoxb-your-token
+export SLACK_APP_TOKEN=xapp-your-token
+export ANTHROPIC_API_KEY=sk-ant-your-key
+docker-compose up --build
+```
+
+**Important**: The docker-compose.yml no longer uses `env_file:` directive. Instead, it uses `environment:` with shell variable substitution. This allows Docker Compose to load from .env file automatically OR use shell-exported variables OR work with orchestration platforms.
 
 ## Development Commands
 
 **Run the app**:
 ```bash
-python3 app.py
+python -m app
+```
+
+Or with Docker:
+```bash
+docker-compose up
 ```
 
 ## Architecture
 
 ### Application Structure
 
-**app.py** - Single entry point for the application:
+The application is organized in the `app/` package:
+
+**app/__main__.py** - Entry point wrapper:
+- Thin wrapper that imports and executes main() from app.py
+- Allows running as a Python module: `python -m app`
+
+**app/app.py** - Main application logic:
 - Uses `AsyncApp` from slack_bolt for async event handling
 - Uses `AsyncSocketModeHandler` for WebSocket connection to Slack
 - Socket Mode eliminates the need for a public URL during development
 - Event handlers are defined inline using decorators
+- Runs health check server on port 8080 for Docker health monitoring
+- Handles graceful shutdown and cleanup of Claude SDK clients
 
 ### Current Event Handlers
 
-**app_mention** (app.py:46-108):
+**app_mention** (app/app.py:~50-115):
 - Triggered when the bot is mentioned in any channel or thread
 - Extracts the message text and conversation context (thread_ts or channel_id)
 - Sends an acknowledgment message to the user
@@ -53,7 +92,7 @@ python3 app.py
 ## Claude Agent SDK Integration
 
 ### Configuration
-The bot uses `ClaudeAgentOptions` with the following settings (app.py:31-36):
+The bot uses `ClaudeAgentOptions` with the following settings (app/app.py:~31-36):
 - **Model**: `haiku` (fast, cost-effective Claude model)
 - **Permission Mode**: `default` (standard execution mode)
 - **Allowed Tools**: Empty list `[]` (no tools enabled, prevents file/system access)
@@ -73,7 +112,7 @@ The bot filters Claude's responses to provide a clean user experience:
 - All included text blocks are concatenated with newlines and sent as a single Slack message
 
 ### Adding Tools (Future Enhancement)
-To enable Claude to use tools (Read, Write, Bash, etc.), modify the `allowed_tools` parameter in app.py:34:
+To enable Claude to use tools (Read, Write, Bash, etc.), modify the `allowed_tools` parameter in app/app.py:~34:
 ```python
 allowed_tools=["Read", "Write", "Bash"]  # Example: enable file and bash operations
 ```
@@ -90,7 +129,7 @@ allowed_tools=["Read", "Write", "Bash"]  # Example: enable file and bash operati
 
 ## Adding New Event Handlers
 
-To add new event handlers, define them inline in app.py using decorators:
+To add new event handlers, define them inline in app/app.py using decorators:
 
 ```python
 @app.event("event_type")
