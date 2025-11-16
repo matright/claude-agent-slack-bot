@@ -1,340 +1,283 @@
 # Claude Agent Slack Bot
 
-A Slack bot built with Bolt for Python that integrates with Claude Agent SDK to provide AI-powered responses. The bot uses async Socket Mode and maintains conversation history per thread/channel.
+A **generic, extensible** Slack bot that brings Claude Agent SDK to Slack. Automatically inherits your existing Claude Code capabilities - slash commands, skills, and sub-agents - making them instantly available in Slack conversations.
+
+## ✨ Features
+
+- 🤖 **Claude AI Integration** - Powered by Claude Agent SDK with configurable models (Haiku, Sonnet, Opus)
+- 💬 **Conversation Memory** - Maintains context per thread/channel for natural follow-ups
+- 🔌 **Socket Mode** - No webhooks or public URLs needed
+- 🐳 **Docker Support** - Production-ready containerization with health checks
+- ⚙️ **Configurable Tools** - Enable file operations and shell access as needed
+- 🔒 **Security First** - Tools disabled by default, permission warnings
+- 🔄 **Reuse Existing Capabilities** - Automatically uses your `.claude/` commands, skills, and agents
+- 📊 **Health Monitoring** - Built-in health check endpoint for orchestration
+
+## 🚀 Quickstart
+
+Get the bot running in 5 minutes:
+
+**1. Clone and setup**
+```bash
+git clone https://github.com/matright/claude-agent-slack-bot.git
+cd claude-agent-slack-bot
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**2. Get your tokens**
+- **Slack Bot Token**: https://api.slack.com/apps → Your App → OAuth & Permissions
+- **Slack App Token**: Basic Information → App-Level Tokens (needs `connections:write` scope)
+- **Anthropic API Key**: https://console.anthropic.com → API Keys
+
+**3. Configure environment**
+```bash
+cp .env.example .env
+# Edit .env with your tokens (required: SLACK_BOT_TOKEN, SLACK_APP_TOKEN, ANTHROPIC_API_KEY)
+```
+
+**4. Start the bot**
+```bash
+python -m app
+```
+
+**5. Test in Slack**
+- Invite bot to a channel: `/invite @your-bot-name`
+- Mention the bot: `@your-bot-name what is the weather like?`
+
+**💡 Pro Tip**: If you have existing Claude Code slash commands (`.claude/commands/`), skills, or agents, they're automatically available to the bot! Just mount your `.claude/` folder (see [Docker Deployment](#docker-deployment) for volume mounting).
+
+**Using Docker?** See the [Docker Deployment](#docker-deployment) section below.
+
+**Want to extend?** Jump to [Extending the Bot](#extending-the-bot) for examples.
+
+---
 
 ## Prerequisites
 
-- Python 3.10+ (required by Claude Agent SDK)
+- Python 3.11+ (matches Docker implementation, recommended)
 - Docker and Docker Compose (for containerized deployment)
 - A Slack workspace where you have permissions to install apps
 - A configured Slack app with Socket Mode enabled
 - Anthropic API key for Claude Agent SDK
 
-## Installation
+## Configuration
 
-### Environment Variables
+All configuration is done via environment variables. See `.env.example` for a complete template.
 
-Create a `.env` file in the project root with the following variables:
+### Required Environment Variables
 
-```bash
-SLACK_BOT_TOKEN=xoxb-your-bot-token
-SLACK_APP_TOKEN=xapp-your-app-token
-ANTHROPIC_API_KEY=sk-ant-your-api-key
-ANTHROPIC_BASE_URL=https://api.anthropic.com  # Optional: for custom endpoints
-CLAUDE_WORKING_DIR=/path/to/your/workspace
-```
+| Variable | Description | Where to Get It |
+|----------|-------------|-----------------|
+| `SLACK_BOT_TOKEN` | Bot User OAuth Token | [Slack API](https://api.slack.com/apps) → Your App → OAuth & Permissions |
+| `SLACK_APP_TOKEN` | App-Level Token (needs `connections:write` scope) | Your App → Basic Information → App-Level Tokens |
+| `ANTHROPIC_API_KEY` | Claude API Key | [Anthropic Console](https://console.anthropic.com) → API Keys |
 
-**Where to find these tokens:**
+### Optional Environment Variables
 
-1. **SLACK_BOT_TOKEN**:
-   - Go to [https://api.slack.com/apps](https://api.slack.com/apps)
-   - Select your app
-   - Navigate to **OAuth & Permissions**
-   - Copy the **Bot User OAuth Token**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Custom API endpoint (for proxies/enterprise) |
+| `CLAUDE_WORKING_DIR` | `/app/claude-cwd` | Directory for Claude file operations |
+| `CLAUDE_MODEL` | `haiku` | Model to use: `haiku` (fast/cheap), `sonnet` (balanced), `opus` (capable/expensive) |
+| `CLAUDE_PERMISSION_MODE` | `default` | Permission handling: `default`, `acceptEdits`, `plan`, `bypassPermissions` ⚠️ |
+| `CLAUDE_ALLOWED_TOOLS` | _(empty)_ | Comma-separated tools: `Read,Write,Bash,Grep,Glob,Edit` ⚠️ |
+| `LOG_LEVEL` | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 
-2. **SLACK_APP_TOKEN**:
-   - Go to **Basic Information** in your app settings
-   - Scroll to **App-Level Tokens**
-   - Create a token with the `connections:write` scope
-   - Copy the token
+**Security Notes:**
+- Tools are **disabled by default** for security
+- `acceptEdits` and `bypassPermissions` modes should only be used in isolated/controlled environments
+- See [Configuring Claude Agent SDK](#configuring-claude-agent-sdk) for detailed configuration guidance
 
-3. **ANTHROPIC_API_KEY**:
-   - Go to [https://console.anthropic.com](https://console.anthropic.com)
-   - Sign in or create an account
-   - Navigate to **API Keys** in the settings
-   - Create a new API key and copy it
-
-4. **ANTHROPIC_BASE_URL** (Optional):
-   - Default: `https://api.anthropic.com`
-   - Only needed for custom endpoints, proxies, or enterprise deployments
-   - For standard usage, you can use the default or omit this variable
-
-5. **CLAUDE_WORKING_DIR**:
-   - Set this to a directory path where Claude can access context (optional)
-   - Example: `/Users/yourusername/workspace` or your project directory
-
-6. **CLAUDE_MODEL** (Optional):
-   - Default: `haiku`
-   - Choose the Claude model based on your needs:
-     - `haiku`: Fast, cost-effective, suitable for most tasks
-     - `sonnet`: Balanced performance, better for complex reasoning
-     - `opus`: Most capable, highest cost, best for difficult tasks
-
-7. **CLAUDE_PERMISSION_MODE** (Optional):
-   - Default: `default`
-   - Controls how Claude handles permissions:
-     - `default`: Standard permission behavior (prompts for confirmations)
-     - `acceptEdits`: Auto-accept file edits without prompting
-     - `plan`: Planning mode - no execution, only planning
-     - `bypassPermissions`: Bypass all permission checks (⚠️ use with caution!)
-   - **Security Warning**: `acceptEdits` and `bypassPermissions` can be dangerous
-
-8. **CLAUDE_ALLOWED_TOOLS** (Optional):
-   - Default: empty (no tools enabled)
-   - Comma-separated list of tools to enable
-   - Available tools: `Read`, `Write`, `Bash`, `Glob`, `Grep`, `Edit`, etc.
-   - Example: `CLAUDE_ALLOWED_TOOLS=Read,Write,Bash`
-   - **Security Warning**: Enabling tools gives Claude file system and command execution access
-
-9. **LOG_LEVEL** (Optional):
-   - Default: `INFO`
-   - Controls application logging verbosity
-   - Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
-   - **Note**: Use `DEBUG` for detailed troubleshooting only - it is very verbose
-
-### Setup Your Local Project
+### Local Development Setup
 
 ```bash
-# Setup your python virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install the dependencies
+# Clone and install
+git clone https://github.com/matright/claude-agent-slack-bot.git
+cd claude-agent-slack-bot
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Start the bot
+# Configure
+cp .env.example .env
+# Edit .env with your tokens
+
+# Run
 python -m app
 ```
 
-## Docker Deployment
+## 🐳 Docker Deployment
 
-The bot can be run in a Docker container for consistent deployment across environments. The container includes all necessary dependencies including Claude Code CLI.
+Production-ready containerization with Python 3.11, Node.js 20 LTS, and Claude Code CLI.
 
-### Environment Variable Configuration
+### Quick Start
 
-The application supports three methods for providing environment variables:
-
-#### Option 1: Using .env File (Recommended for Development)
-Docker Compose automatically loads variables from `.env` file in the project root:
 ```bash
+# 1. Configure
 cp .env.example .env
-# Edit .env with your actual credentials
+# Edit .env with your tokens
+
+# 2. Run
 docker-compose up --build
+
+# Or in detached mode
+docker-compose up -d
+
+# View logs
+docker-compose logs -f slack-bot
+
+# Stop
+docker-compose down
 ```
 
-#### Option 2: Shell Export (Alternative for Development)
-Export variables to your shell before running docker-compose:
-```bash
-export SLACK_BOT_TOKEN=xoxb-your-token-here
-export SLACK_APP_TOKEN=xapp-your-token-here
-export ANTHROPIC_API_KEY=sk-ant-your-key-here
-export CLAUDE_WORKING_DIR=/app/claude-cwd
-docker-compose up --build
-```
+### Container Details
 
-#### Option 3: Production Deployment (Platform Secrets)
-For production, use your orchestration platform's secret management:
-```bash
-# Docker run with environment variables
-docker run -e SLACK_BOT_TOKEN=xxx \
-           -e SLACK_APP_TOKEN=xxx \
-           -e ANTHROPIC_API_KEY=xxx \
-           -e CLAUDE_WORKING_DIR=/app/claude-cwd \
-           claude-agent-slack-bot:latest
-
-# Kubernetes - use Secrets
-# Docker Swarm - use docker secret
-# Cloud platforms - use AWS Secrets Manager, GCP Secret Manager, etc.
-```
-
-**Important**: Never commit `.env` files or use them in production. Always use platform-specific secret management for deployed environments.
-
-### Quick Start with Docker
-
-1. **Create environment file**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your actual credentials
-   ```
-
-2. **Build and run with Docker Compose**:
-   ```bash
-   docker-compose up --build
-   ```
-
-3. **Run in detached mode**:
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **View logs**:
-   ```bash
-   docker-compose logs -f slack-bot
-   ```
-
-5. **Stop the bot**:
-   ```bash
-   docker-compose down
-   ```
-
-### Docker Architecture
-
-The containerized bot includes:
-- **Base Image**: Python 3.11-slim with Node.js 20 LTS
-- **Claude Code CLI**: Installed globally for Claude Agent SDK
-- **Health Check**: HTTP endpoint on `localhost:8080/health`
-- **Resource Limits**: 1 CPU, 1GiB RAM (configurable)
-- **Non-root User**: Runs as `appuser` (UID 1000) for security
+- **Base**: Python 3.11-slim + Node.js 20 LTS
+- **User**: Non-root `appuser` (UID 1000)
+- **Health Check**: `http://localhost:8080/health` (checked every 30s)
+- **Resources**: 1 CPU, 1GB RAM (configurable in `docker-compose.yml`)
 
 ### Volume Mounts
 
-The Docker setup uses several volume mounts for persistence and configuration:
+| Mount | Purpose | Notes |
+|-------|---------|-------|
+| `./claude-cwd:/app/claude-cwd` | Claude working directory | Required for file operations |
+| `./.claude:/app/.claude:ro` | Project Claude config | Optional, tracked in git |
+| `~/.claude:/home/appuser/.claude:ro` | User Claude config | Optional, dev only (see `docker-compose.override.yml.example`) |
 
-#### Claude Working Directory (Required)
-```yaml
-- ./claude-cwd:/app/claude-cwd
-```
-Persistent storage for Claude Agent SDK operations. Files created during conversations are stored here.
+### Environment Variables
 
-#### Project Claude Configuration (Optional)
-```yaml
-- ./.claude:/app/.claude:ro
-```
-Project-level Claude Code settings shared by the team. The `.claude/config.json` file contains:
-- Default model settings
-- Allowed tools configuration
-- Project-specific preferences
+Docker Compose automatically loads `.env` file. For production:
+- **Kubernetes**: Use Secrets
+- **Docker Swarm**: Use docker secrets
+- **Cloud**: Use platform secret managers (AWS Secrets Manager, GCP Secret Manager, etc.)
 
-**This folder is tracked in git** (only `config.json`) and shared across all developers.
+**Never commit `.env` files to git!**
 
-#### User Claude Configuration (Optional, Development Only)
-```yaml
-- ~/.claude:/home/appuser/.claude:ro
-```
-Your personal Claude Code settings from `~/.claude/`. Useful for development to preserve personal preferences.
+### Production Considerations
 
-**This should NEVER be committed to git** - it contains user-specific settings and potentially sensitive data.
-
-To enable this mount:
-1. Copy the override example: `cp docker-compose.override.yml.example docker-compose.override.yml`
-2. Uncomment the user Claude volume mount
-3. Restart the container
-
-### Configuration Files
-
-#### `.env` File
-Contains sensitive credentials (never commit this):
-```bash
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_APP_TOKEN=xapp-...
-ANTHROPIC_API_KEY=sk-ant-...
-CLAUDE_WORKING_DIR=/app/claude-cwd
-```
-
-Use `.env.example` as a template.
-
-#### `docker-compose.yml`
-Main Docker Compose configuration with:
-- Service definition
-- Volume mounts (Claude working dir + project config)
-- Resource limits
-- Health check configuration
-- Logging settings
-
-#### `docker-compose.override.yml` (Optional)
-Local development customizations:
-- Enable user Claude config mount
-- Override environment variables
-- Adjust resource limits
-- Add debugging features
-
-Copy from example:
-```bash
-cp docker-compose.override.yml.example docker-compose.override.yml
-```
-
-### Health Check
-
-The bot includes a built-in health check endpoint for monitoring:
-
-- **Endpoint**: `http://localhost:8080/health`
-- **Response**: `{"status": "healthy", "conversations": N}`
-- **Docker Health Check**: Automatically queries this endpoint every 30 seconds
-
-Check health status:
-```bash
-# View health status
-docker inspect --format='{{.State.Health.Status}}' claude-agent-slack-bot
-
-# View health check logs
-docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' claude-agent-slack-bot
-```
-
-### Resource Management
-
-Default resource limits (based on Claude Agent SDK recommendations):
-
-```yaml
-resources:
-  limits:
-    cpus: '1.0'
-    memory: 1G
-  reservations:
-    cpus: '0.5'
-    memory: 512M
-```
-
-Adjust in `docker-compose.yml` or create a `docker-compose.override.yml` for custom limits.
-
-### Production Deployment
-
-For production deployments, consider:
-
-1. **State Persistence**: The bot currently uses in-memory conversation state. For multi-instance deployments, implement Redis (commented service included in `docker-compose.yml`)
-
-2. **Secrets Management**: Use Docker secrets or external secret managers (Vault, AWS Secrets Manager) instead of `.env` files
-
-3. **Monitoring**: Set up log aggregation and alerting
-   ```bash
-   # View structured logs
-   docker-compose logs -f --tail=100 slack-bot
-   ```
-
-4. **Container Orchestration**: Deploy with Kubernetes, Docker Swarm, or cloud platforms
-   - Recommended: Cloudflare Sandboxes, Modal, E2B, Fly Machines
-
-5. **Scaling**: For horizontal scaling, implement external state store (Redis) first
+1. **State Persistence**: Currently in-memory. For multi-instance deployments, uncomment the Redis service in `docker-compose.yml`
+2. **Secrets**: Use orchestration platform's secret management
+3. **Monitoring**: Set up log aggregation (e.g., `docker-compose logs -f --tail=100 slack-bot`)
+4. **Scaling**: Implement Redis-based state before horizontal scaling
 
 ### Troubleshooting
 
-#### Health Check Failing
 ```bash
-# Check if the health endpoint is responding
+# Health check failing?
 docker exec claude-agent-slack-bot curl http://localhost:8080/health
 
-# Check application logs
-docker-compose logs slack-bot
-```
-
-#### Permission Issues on Volume Mounts
-The container runs as user `appuser` (UID 1000). If you encounter permission issues:
-```bash
-# Fix permissions on mounted directories
+# Permission issues?
 sudo chown -R 1000:1000 ./claude-cwd
-```
 
-#### Container Won't Start
-```bash
-# Check Docker logs for errors
+# Container won't start?
 docker-compose logs slack-bot
+docker-compose config  # Verify env vars
 
-# Verify environment variables
-docker-compose config
-
-# Rebuild without cache
-docker-compose build --no-cache
-docker-compose up
+# Out of memory?
+# Edit docker-compose.override.yml to increase memory limit
 ```
 
-#### Out of Memory
-If the bot runs out of memory (especially with many concurrent conversations):
-```bash
-# Increase memory limit in docker-compose.override.yml
-deploy:
-  resources:
-    limits:
-      memory: 2G
+## 🏗️ Architecture & How It Works
+
+### Event Flow
+
 ```
+1. User mentions bot in Slack
+   ↓
+2. Socket Mode receives event → Bot sends acknowledgment
+   ↓
+3. Message forwarded to Claude Agent SDK with conversation context
+   ↓
+4. Claude processes query (using configured model & tools)
+   ↓
+5. Response filtered (reasoning removed, final text extracted)
+   ↓
+6. Result posted back to Slack thread
+```
+
+### Key Components
+
+- **Slack Bolt**: Async event handling via Socket Mode (no webhooks needed)
+- **Claude Agent SDK**: AI-powered responses with conversation history
+- **Conversation State**: In-memory client instances per channel/thread (`{channel_id}:{thread_ts}`)
+- **Health Check Server**: HTTP endpoint for container monitoring
+
+### Conversation Persistence
+
+Each conversation (channel or thread) gets a dedicated `ClaudeSDKClient` instance stored in memory. This enables context retention across multiple mentions within the same conversation.
+
+**Note**: For production deployments with multiple instances, implement Redis-based state sharing (see commented Redis service in `docker-compose.yml`).
+
+## 🔄 Leveraging Existing Claude Capabilities
+
+One of the most powerful features of this bot is its ability to **reuse your existing Claude Code setup**. If you've already invested in building custom slash commands, skills, or sub-agents for Claude Code, they work immediately in Slack!
+
+### How It Works
+
+The bot respects Claude Code's configuration hierarchy:
+1. **Project-level config** (`.claude/config.json`) - Shared team settings
+2. **User-level config** (`~/.claude/`) - Your personal commands, skills, agents
+3. **Runtime config** (environment variables) - Deployment-specific overrides
+
+### What Gets Inherited
+
+**Slash Commands** (`.claude/commands/*.md`)
+
+If you have custom commands like `/review-pr` or `/generate-tests`, users can invoke them in Slack:
+```
+@bot /review-pr #123
+```
+
+**Skills** (Claude Code skills)
+
+Any skills you've defined are automatically available. The bot can invoke them as needed during conversations.
+
+**Sub-agents** (Custom agents)
+
+If you've created specialized agents for specific tasks, they're accessible to the bot for complex workflows.
+
+**Tool Configurations**
+
+Your allowed tools and permission modes are inherited from `.claude/config.json` and can be overridden via environment variables.
+
+### Setup for Reusability
+
+**For Docker (Recommended):**
+Mount your `.claude/` folder as a volume:
+```yaml
+# In docker-compose.override.yml
+volumes:
+  - ~/.claude:/home/appuser/.claude:ro  # User-level (personal)
+  - ./.claude:/app/.claude:ro            # Project-level (team)
+```
+
+**For Local Development:**
+The bot automatically reads from:
+- `~/.claude/` for your personal config
+- `./.claude/` in the project root for team config
+
+### Example: Reusing a Code Review Command
+
+Say you have `.claude/commands/review-pr.md`:
+```markdown
+# Review Pull Request
+Given a PR number, analyze the code changes and provide review feedback.
+```
+
+**In Slack, it just works:**
+```
+@bot /review-pr 456
+```
+
+The bot will execute the command using the same Claude Agent SDK context, with access to all configured tools.
+
+### Benefits
+
+✅ **Zero Duplication** - Don't rewrite commands/skills for Slack
+✅ **Consistent Behavior** - Same commands work in CLI and Slack
+✅ **Faster Development** - Extend once, use everywhere
+✅ **Team Collaboration** - Share `.claude/config.json` for consistent team experience
 
 ## Configuring Claude Agent SDK
 
@@ -460,29 +403,14 @@ claude-agent-slack-bot/
 └── CLAUDE.md               # Project documentation for Claude Code
 ```
 
-### `app/app.py`
+### Key Files
 
-The main application file that:
-- Initializes the Slack Bolt async app
-- Loads environment variables from `.env` (via python-dotenv)
-- Defines event handlers using decorators
-- Starts both the Slack Socket Mode handler and health check server
-- Handles graceful shutdown and cleanup
-
-### `app/__main__.py`
-
-Thin entry point wrapper that:
-- Imports and executes the main() function from app.py
-- Allows running the application as a module: `python -m app`
-
-### Current Features
-
-- **Claude Agent SDK Integration**: Powered by Claude AI (Haiku model) for intelligent responses
-- **Conversation Memory**: Maintains conversation history per thread/channel for contextual follow-ups
-- **app_mention**: Responds to bot mentions with AI-generated responses
-- **Security**: No file system access (allowed_tools=[]), Claude operates in text-only mode
-- **Health Check**: HTTP endpoint at `/health` for container monitoring and health checks
-- **Graceful Shutdown**: Properly cleans up Claude SDK client connections on shutdown
+- **`app/app.py`**: Main application logic - event handlers, Claude SDK integration, health check server
+- **`app/__main__.py`**: Entry point wrapper - allows running as module (`python -m app`)
+- **`app/__init__.py`**: Package metadata and version
+- **`docker-compose.yml`**: Main Docker Compose configuration
+- **`.env.example`**: Environment variable template (copy to `.env`)
+- **`CLAUDE.md`**: Project documentation for Claude Code
 
 ## Slack App Configuration
 
@@ -493,22 +421,193 @@ Your Slack app should be configured with:
   - `app_mentions:read` (to receive mention events)
   - `chat:write` (to send messages)
 
-## Adding New Features
+## 🔧 Extending the Bot
 
-Event handlers are defined inline in `app.py` using decorators:
+### Adding New Slack Event Handlers
 
+The bot currently only handles `app_mention` events. Add more by defining handlers in `app/app.py`:
+
+**Example: Respond to reactions**
 ```python
-@app.event("event_type")
-async def handler_name(event, say, logger):
-    # Your handler logic
-    pass
+@app.event("reaction_added")
+async def handle_reaction(event, say, logger):
+    reaction = event.get("reaction")
+    user_id = event.get("user")
+
+    # Get conversation context
+    channel_id = event.get("item", {}).get("channel")
+    thread_ts = event.get("item", {}).get("ts")
+    conversation_key = f"{channel_id}:{thread_ts}"
+
+    # Get or create Claude client for this conversation
+    client = await get_or_create_claude_client(conversation_key)
+
+    # Query Claude
+    await client.query(f"User reacted with :{reaction}:. What might this mean?")
+
+    # Collect and send response
+    response_texts = []
+    async for message in client.receive_response():
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    response_texts.append(block.text)
+
+    final_response = "\n".join(response_texts)
+    await say(text=final_response, thread_ts=thread_ts)
 ```
 
-For slash commands:
-
+**Example: Respond to all messages (not just mentions)**
 ```python
-@app.command("/command-name")
-async def command_handler(ack, command, respond):
-    await ack()
-    await respond("Response")
+@app.event("message")
+async def handle_message(event, say, logger):
+    # Filter out bot messages and threaded replies
+    if event.get("subtype") or event.get("bot_id") or event.get("thread_ts"):
+        return
+
+    # Process similar to app_mention handler
+    # ... (follow same pattern as app_mention in app.py)
+```
+
+### Implementing Slash Commands
+
+**Example: `/ask` command**
+```python
+@app.command("/ask")
+async def handle_ask_command(ack, command, respond):
+    await ack()  # Acknowledge command immediately
+
+    user_id = command["user_id"]
+    channel_id = command["channel_id"]
+    text = command["text"]  # User's question
+
+    # Get conversation context
+    conversation_key = f"{channel_id}:{command['trigger_id']}"
+    client = await get_or_create_claude_client(conversation_key)
+
+    # Send to Claude
+    await client.query(text)
+
+    # Collect response
+    response_texts = []
+    async for message in client.receive_response():
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    response_texts.append(block.text)
+
+    await respond(f"<@{user_id}> asked: {text}\n\n{chr(10).join(response_texts)}")
+```
+
+### Enabling Tools for Specific Use Cases
+
+**Code Review Bot**
+```bash
+# Read-only access for analyzing code
+CLAUDE_ALLOWED_TOOLS=Read,Grep,Glob
+CLAUDE_WORKING_DIR=/path/to/your/codebase
+CLAUDE_MODEL=sonnet  # Better reasoning for code review
+```
+
+**Documentation Generator**
+```bash
+# Read and write for creating docs
+CLAUDE_ALLOWED_TOOLS=Read,Write,Edit
+CLAUDE_WORKING_DIR=/path/to/docs
+CLAUDE_MODEL=haiku  # Cost-effective for doc generation
+```
+
+**DevOps Assistant** ⚠️
+```bash
+# Shell access for running commands (use with caution!)
+CLAUDE_ALLOWED_TOOLS=Read,Bash
+CLAUDE_PERMISSION_MODE=acceptEdits  # Only in isolated environments!
+CLAUDE_MODEL=sonnet
+```
+
+### Customizing Response Behavior
+
+**Add typing indicators**
+```python
+async def handle_app_mention(event, say, logger):
+    # ... existing code ...
+
+    # Show bot is working
+    await app.client.reactions_add(
+        channel=channel_id,
+        timestamp=event["ts"],
+        name="hourglass_flowing_sand"
+    )
+
+    # Query Claude
+    await client.query(message_text)
+    # ... collect response ...
+
+    # Remove hourglass, add checkmark
+    await app.client.reactions_remove(
+        channel=channel_id,
+        timestamp=event["ts"],
+        name="hourglass_flowing_sand"
+    )
+    await app.client.reactions_add(
+        channel=channel_id,
+        timestamp=event["ts"],
+        name="white_check_mark"
+    )
+
+    # Send response
+    await say(text=final_response, thread_ts=thread_ts)
+```
+
+**Split long responses into threads**
+```python
+# Split at 3000 chars (Slack message limit is ~4000)
+MAX_LENGTH = 3000
+chunks = [final_response[i:i+MAX_LENGTH]
+          for i in range(0, len(final_response), MAX_LENGTH)]
+
+# First chunk as main reply
+await say(text=chunks[0], thread_ts=thread_ts)
+
+# Remaining chunks as thread replies
+for chunk in chunks[1:]:
+    await say(text=chunk, thread_ts=thread_ts)
+```
+
+### Production State Management with Redis
+
+For multi-instance deployments, replace in-memory state with Redis:
+
+**1. Uncomment Redis service in `docker-compose.yml`**
+
+**2. Add Redis client to `app/app.py`:**
+```python
+import redis.asyncio as redis
+
+# Initialize Redis
+redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
+
+async def get_or_create_claude_client(conversation_key: str):
+    # Check Redis for existing conversation
+    exists = await redis_client.exists(f"conversation:{conversation_key}")
+
+    if not exists:
+        # Create new client
+        client = ClaudeSDKClient(options=options)
+        await client.__aenter__()
+
+        # Store in Redis with 1-hour TTL
+        await redis_client.setex(
+            f"conversation:{conversation_key}",
+            3600,
+            "active"
+        )
+        claude_clients[conversation_key] = client
+
+    return claude_clients.get(conversation_key)
+```
+
+**3. Add `redis` to `requirements.txt`:**
+```
+redis[hiredis]>=5.0.0
 ```
